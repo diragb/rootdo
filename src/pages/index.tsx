@@ -1,118 +1,318 @@
-import Image from "next/image";
-import { Inter } from "next/font/google";
+'use client'
 
-const inter = Inter({ subsets: ["latin"] });
+// Packages:
+import { useEffect, useState } from 'react'
+import Fuse from 'fuse.js'
+import { nanoid } from 'nanoid'
+import { debounce, isArray } from 'lodash'
+import localforage from 'localforage'
 
-export default function Home() {
+// Typescript:
+export interface Task {
+  id: string
+  isDone: boolean
+  title: string
+  description: string
+}
+
+// Imports:
+import { DotsThree } from '@phosphor-icons/react/dist/ssr/DotsThree'
+
+// Components:
+import { Input } from '@/components/ui/input'
+import { Button } from '@/components/ui/button'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
+import { Label } from '@/components/ui/label'
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/table'
+import { Checkbox } from '@/components/ui/checkbox'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+  DropdownMenuGroup,
+  DropdownMenuSeparator,
+} from '@/components/ui/dropdown-menu'
+
+// Functions:
+const Home = () => {
+  // Constants:
+  const EMPTY_TASK: Task = {
+    id: '',
+    isDone: false,
+    title: '',
+    description: '',
+  }
+  
+  // State:
+  const [isMounted, setIsMounted] = useState(false)
+  const [searchInput, setSearchInput] = useState('')
+  const [tasks, setTasks] = useState<Task[]>([])
+  const [fuse, setFuse] = useState<Fuse<Task>>()
+  const [searchResults, setSearchResults] = useState<Task[]>([])
+  const [isEditMode, setIsEditMode] = useState(false)
+  const [showAddEditTaskDialog, setShowAddEditTaskDialog] = useState(false)
+  const [newTask, setNewTask] = useState<Task>(EMPTY_TASK)
+  const [showDeleteTaskDialog, setShowDeleteTaskDialog] = useState(false)
+  const [taskToBeDeletedID, setTaskToBeDeletedID] = useState<string | null>(null)
+
+  // Functions:
+  const _search = (searchInput: string) => {
+    if (!fuse) return
+    const results = fuse.search(searchInput)
+    setSearchResults(results.map(result => result.item))
+  }
+
+  const search = debounce(_search, 400)
+
+  const addTask = () => {
+    setShowAddEditTaskDialog(false)
+    setTasks(_tasks => [..._tasks, { ...newTask, id: nanoid() }])
+    setNewTask(EMPTY_TASK)
+  }
+
+  const onCheckedChange = (taskID: string, newState: boolean) => {
+    setTasks(_tasks => _tasks.map(task => {
+      if (task.id === taskID) return {
+        ...task,
+        isDone: newState,
+      }
+      else return task
+    }))
+  }
+
+  const initiateTaskEdit = (task: Task) => {
+    setIsEditMode(true)
+    setNewTask(task)
+    setShowAddEditTaskDialog(true)
+  }
+
+  const editTask = () => {
+    setShowAddEditTaskDialog(false)
+    setTasks(_tasks => _tasks.map(task => {
+      if (task.id === newTask.id) return { ...newTask }
+      else return task
+    }))
+    setNewTask(EMPTY_TASK)
+    setIsEditMode(false)
+  }
+
+  const duplicateTask = (task: Task) => {
+    setTasks(_tasks => [..._tasks, { ...task, isDone: false, id: nanoid() }])
+  }
+
+  const initiateDeleteTask = (task: Task) => {
+    setTaskToBeDeletedID(task.id)
+    setShowDeleteTaskDialog(true)
+  }
+
+  const deleteTask = () => {
+    setTasks(_tasks => _tasks.filter(task => task.id !== taskToBeDeletedID))
+    setTaskToBeDeletedID(null)
+    setShowDeleteTaskDialog(false)
+  }
+
+  const loadCachedTasks = async () => {
+    const tasks = await localforage.getItem('tasks')
+    if (tasks && isArray(tasks)) setTasks(tasks)
+  }
+
+  // Effects:
+  useEffect(() => {
+    setIsMounted(true)
+    loadCachedTasks()
+  }, [])
+
+  useEffect(() => {
+    const fuse = new Fuse(tasks, {
+      keys: ['title', 'description'],
+      isCaseSensitive: false,
+    })
+    setFuse(fuse)
+    localforage.setItem('tasks', tasks)
+  }, [tasks])
+
+  // Return:
+  if (!isMounted) {
+    return null
+  }
+
   return (
-    <main
-      className={`flex min-h-screen flex-col items-center justify-between p-24 ${inter.className}`}
-    >
-      <div className="z-10 max-w-5xl w-full items-center justify-between font-mono text-sm lg:flex">
-        <p className="fixed left-0 top-0 flex w-full justify-center border-b border-gray-300 bg-gradient-to-b from-zinc-200 pb-6 pt-8 backdrop-blur-2xl dark:border-neutral-800 dark:bg-zinc-800/30 dark:from-inherit lg:static lg:w-auto  lg:rounded-xl lg:border lg:bg-gray-200 lg:p-4 lg:dark:bg-zinc-800/30">
-          Get started by editing&nbsp;
-          <code className="font-mono font-bold">src/pages/index.tsx</code>
-        </p>
-        <div className="fixed bottom-0 left-0 flex h-48 w-full items-end justify-center bg-gradient-to-t from-white via-white dark:from-black dark:via-black lg:static lg:h-auto lg:w-auto lg:bg-none">
-          <a
-            className="pointer-events-none flex place-items-center gap-2 p-8 lg:pointer-events-auto lg:p-0"
-            href="https://vercel.com?utm_source=create-next-app&utm_medium=default-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            By{" "}
-            <Image
-              src="/vercel.svg"
-              alt="Vercel Logo"
-              className="dark:invert"
-              width={100}
-              height={24}
-              priority
+    <>
+      <Dialog open={showAddEditTaskDialog} onOpenChange={setShowAddEditTaskDialog}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>{isEditMode ? 'Edit' : 'Add'} Task</DialogTitle>
+            <DialogDescription>
+              {
+                isEditMode ?
+                'Edit the title or the description.' :
+                'Add a new task with a title and a description.'
+              }
+              
+            </DialogDescription>
+          </DialogHeader>
+          <div className='grid gap-4 py-4'>
+            <div className='grid grid-cols-4 items-center gap-4'>
+              <Label htmlFor='name' className='text-right'>
+                Title
+              </Label>
+              <Input
+                id='title'
+                value={newTask.title}
+                onInput={event => setNewTask(_newTask => ({ ..._newTask, title: event.currentTarget.value }))}
+                className='col-span-3'
+              />
+            </div>
+            <div className='grid grid-cols-4 items-center gap-4'>
+              <Label htmlFor='username' className='text-right'>
+                Description
+              </Label>
+              <Input
+                id='description'
+                value={newTask.description}
+                onInput={event => setNewTask(_newTask => ({ ..._newTask, description: event.currentTarget.value }))}
+                className='col-span-3'
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button
+              disabled={
+                (newTask.title?.trim().length ?? 0) === 0 ||
+                (newTask.description?.trim().length ?? 0) === 0
+              }
+              onClick={isEditMode ? editTask : addTask}
+              variant='default'
+              className='transition-all'
+            >
+              Save changes
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+      <Dialog open={showDeleteTaskDialog} onOpenChange={setShowDeleteTaskDialog}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Delete Task?</DialogTitle>
+            <DialogDescription>This action cannot be undone. Are you sure?</DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button
+              onClick={() => setShowDeleteTaskDialog(false)}
+              variant='ghost'
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={deleteTask}
+              variant='destructive'
+            >
+              Delete
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+      <div className='mt-10 flex justify-center items-center'>
+        <div className='flex justify-center flex-col gap-6 w-full sm:w-[50%]'>
+          <div className='flex justify-between gap-2   sm:gap-4 w-full'>
+            <Input
+              value={searchInput}
+              onInput={event => {
+                setSearchInput(event.currentTarget.value)
+                search(event.currentTarget.value)
+              }}
+              placeholder='Search for any task'
             />
-          </a>
+            <Button
+              disabled={(searchInput?.trim().length ?? 0) === 0}
+              onClick={() => _search(searchInput)}
+              variant='secondary'
+              className='transition-all'
+            >
+              Search
+            </Button>
+            <Button
+              onClick={() => setShowAddEditTaskDialog(true)}
+              variant='default'
+            >
+              Add Task
+            </Button>
+          </div>
+          <div>
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead className='w-[50px]'><Checkbox checked={false} /></TableHead>
+                  <TableHead>Title</TableHead>
+                  <TableHead>Description</TableHead>
+                  <TableHead></TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {
+                  (
+                    (searchInput?.trim().length ?? 0) === 0 ? tasks : searchResults
+                  ).map(task => (
+                    <TableRow key={task.id}>
+                      <TableHead className='w-[50px]'>
+                        <Checkbox
+                          checked={task.isDone}
+                          onCheckedChange={(newState: boolean) => onCheckedChange(task.id, newState)}
+                        />
+                      </TableHead>
+                      <TableCell className='font-medium'>{task.title}</TableCell>
+                      <TableCell>{task.description}</TableCell>
+                      <TableCell align='right'>
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <Button variant='ghost' size='icon' className='focus:outline-none'>
+                              <DotsThree className='h-[1.2rem] w-[1.2rem] transition-all' />
+                            </Button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align='end'>
+                            <DropdownMenuGroup>
+                              <DropdownMenuItem className='cursor-pointer' onClick={() => initiateTaskEdit(task)}>
+                                Edit
+                              </DropdownMenuItem>
+                              <DropdownMenuItem className='cursor-pointer' onClick={() => duplicateTask(task)}>
+                                Duplicate
+                              </DropdownMenuItem>
+                            </DropdownMenuGroup>
+                            <DropdownMenuSeparator />
+                            <DropdownMenuGroup>
+                              <DropdownMenuItem className='cursor-pointer' onClick={() => initiateDeleteTask(task)}>
+                                Delete
+                              </DropdownMenuItem>
+                            </DropdownMenuGroup>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
+                      </TableCell>
+                    </TableRow>
+                  ))
+                }
+              </TableBody>
+            </Table>
+          </div>
         </div>
       </div>
-
-      <div className="relative flex place-items-center before:absolute before:h-[300px] before:w-full sm:before:w-[480px] before:-translate-x-1/2 before:rounded-full before:bg-gradient-radial before:from-white before:to-transparent before:blur-2xl before:content-[''] after:absolute after:-z-20 after:h-[180px] after:w-full sm:after:w-[240px] after:translate-x-1/3 after:bg-gradient-conic after:from-sky-200 after:via-blue-200 after:blur-2xl after:content-[''] before:dark:bg-gradient-to-br before:dark:from-transparent before:dark:to-blue-700/10 after:dark:from-sky-900 after:dark:via-[#0141ff]/40 before:lg:h-[360px]">
-        <Image
-          className="relative dark:drop-shadow-[0_0_0.3rem_#ffffff70] dark:invert"
-          src="/next.svg"
-          alt="Next.js Logo"
-          width={180}
-          height={37}
-          priority
-        />
-      </div>
-
-      <div className="mb-32 grid text-center lg:max-w-5xl lg:w-full lg:mb-0 lg:grid-cols-4 lg:text-left">
-        <a
-          href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=default-template-tw&utm_campaign=create-next-app"
-          className="group rounded-lg border border-transparent px-5 py-4 transition-colors hover:border-gray-300 hover:bg-gray-100 hover:dark:border-neutral-700 hover:dark:bg-neutral-800/30"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <h2 className={`mb-3 text-2xl font-semibold`}>
-            Docs{" "}
-            <span className="inline-block transition-transform group-hover:translate-x-1 motion-reduce:transform-none">
-              -&gt;
-            </span>
-          </h2>
-          <p className={`m-0 max-w-[30ch] text-sm opacity-50`}>
-            Find in-depth information about Next.js features and API.
-          </p>
-        </a>
-
-        <a
-          href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=default-template-tw&utm_campaign=create-next-app"
-          className="group rounded-lg border border-transparent px-5 py-4 transition-colors hover:border-gray-300 hover:bg-gray-100 hover:dark:border-neutral-700 hover:dark:bg-neutral-800/30"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <h2 className={`mb-3 text-2xl font-semibold`}>
-            Learn{" "}
-            <span className="inline-block transition-transform group-hover:translate-x-1 motion-reduce:transform-none">
-              -&gt;
-            </span>
-          </h2>
-          <p className={`m-0 max-w-[30ch] text-sm opacity-50`}>
-            Learn about Next.js in an interactive course with&nbsp;quizzes!
-          </p>
-        </a>
-
-        <a
-          href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=default-template-tw&utm_campaign=create-next-app"
-          className="group rounded-lg border border-transparent px-5 py-4 transition-colors hover:border-gray-300 hover:bg-gray-100 hover:dark:border-neutral-700 hover:dark:bg-neutral-800/30"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <h2 className={`mb-3 text-2xl font-semibold`}>
-            Templates{" "}
-            <span className="inline-block transition-transform group-hover:translate-x-1 motion-reduce:transform-none">
-              -&gt;
-            </span>
-          </h2>
-          <p className={`m-0 max-w-[30ch] text-sm opacity-50`}>
-            Discover and deploy boilerplate example Next.js&nbsp;projects.
-          </p>
-        </a>
-
-        <a
-          href="https://vercel.com/new?utm_source=create-next-app&utm_medium=default-template-tw&utm_campaign=create-next-app"
-          className="group rounded-lg border border-transparent px-5 py-4 transition-colors hover:border-gray-300 hover:bg-gray-100 hover:dark:border-neutral-700 hover:dark:bg-neutral-800/30"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <h2 className={`mb-3 text-2xl font-semibold`}>
-            Deploy{" "}
-            <span className="inline-block transition-transform group-hover:translate-x-1 motion-reduce:transform-none">
-              -&gt;
-            </span>
-          </h2>
-          <p className={`m-0 max-w-[30ch] text-sm opacity-50 text-balance`}>
-            Instantly deploy your Next.js site to a shareable URL with Vercel.
-          </p>
-        </a>
-      </div>
-    </main>
-  );
+    </>
+  )
 }
+
+// Exports:
+export default Home
